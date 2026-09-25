@@ -41,6 +41,8 @@ export type FuzzyDetection = {
   source: "laya" | "jev";
   model: string;
   latencyMs: number;
+  /** The model's probability for the kind it picked, 0 to 1. Rules are exact, so only model answers carry one. */
+  sure: number;
 };
 
 export type Detection = { kind: RuleKind; source: "rules" } | FuzzyDetection;

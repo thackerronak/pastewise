@@ -73,5 +73,8 @@ export function useDetection(text: string, engine: Engine, debounceMs = 300) {
       : null;
   const error = useModel && current && "error" in current ? current.error : null;
 
-  return { detection, pending: useModel && !current, error };
+  // Fuzzy text with no model to read it: the page says what's missing instead of guessing.
+  const needsModel = fuzzyText && !available;
+
+  return { detection, pending: useModel && !current, error, needsModel };
 }

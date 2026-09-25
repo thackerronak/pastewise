@@ -1,15 +1,16 @@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { type Json, jsonStats, jsonToTs } from "@/lib/tools/json";
+import { JsonTree } from "./json-tree";
 import { CodeBlock } from "./shared";
 
 export function JsonTool({ text }: { text: string }) {
   const value = JSON.parse(text) as Json;
   const { keys, depth } = jsonStats(value);
   const views = [
-    ["formatted", "Formatted", JSON.stringify(value, null, 2)],
-    ["typescript", "TypeScript", jsonToTs(value)],
-    ["minified", "Minified", JSON.stringify(value)],
+    ["formatted", "Formatted"],
+    ["typescript", "TypeScript"],
+    ["minified", "Minified"],
   ];
 
   return (
@@ -27,11 +28,15 @@ export function JsonTool({ text }: { text: string }) {
           <Badge variant="secondary">depth {depth}</Badge>
         </div>
       </div>
-      {views.map(([id, , code]) => (
-        <TabsContent key={id} value={id}>
-          <CodeBlock code={code} />
-        </TabsContent>
-      ))}
+      <TabsContent value="formatted">
+        <JsonTree value={value} />
+      </TabsContent>
+      <TabsContent value="typescript">
+        <CodeBlock code={jsonToTs(value)} />
+      </TabsContent>
+      <TabsContent value="minified">
+        <CodeBlock code={JSON.stringify(value)} />
+      </TabsContent>
     </Tabs>
   );
 }

@@ -1,21 +1,31 @@
 "use client";
 
-import { AnimatePresence, MotionConfig, motion } from "motion/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { MotionConfig, motion } from "motion/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Kbd } from "@/components/ui/kbd";
 import { Textarea } from "@/components/ui/textarea";
 import { ToolBoundary } from "@/components/tools/tool-boundary";
 import { ToolFor } from "@/components/tools/registry";
 import { useDetection, type Engine } from "@/hooks/use-detection";
 import { useEngine } from "@/hooks/use-engine";
+import { detectByRules } from "@/lib/detect/rules";
 import { useLaya } from "@/lib/laya/client";
-import { EASE_OUT, panel, row } from "@/lib/motion";
-import { EnginePanel, EngineTabs } from "./engine-control";
+import { panel, row } from "@/lib/motion";
+import { EnginePanel, EngineTabs, NeedsModel } from "./engine-control";
 import { KindBadge } from "./kind-badge";
 import { LatencyHud } from "./latency-hud";
 import { SAMPLES } from "./samples";
 
 const PLACEHOLDERS = ["Paste some JSON", "Paste a JWT", "Paste a cron expression", "Paste a stack trace", "Paste a color"];
+
+// Samples the exact-format rules can't read (stack traces, code) need a model; they're marked while there isn't one.
+const SAMPLE_NEEDS_MODEL = new Set(SAMPLES.filter(([, sample]) => detectByRules(sample) === null).map(([label]) => label));
+
+const EscHint = () => (
+  <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+    <Kbd>Esc</Kbd> to clear
+  </p>
+);
 
 export function PasteWorkspace() {
   const [text, setText] = useState("");
@@ -33,18 +43,32 @@ export function PasteWorkspace() {
         : { name: "laya", ready: engine.engine === "laya" && model.status === "ready", setup },
     [engine.engine, jevKey, rejectKey, model.status, setup],
   );
-  const { detection, pending, error } = useDetection(text, active);
-  // No model, no box: until the selected engine can read pastes (Laya loaded, or Jev with a key), a layer over the
-  // paste box asks for what it needs.
-  const locked = active.name === "laya" && !active.ready;
+  const { detection, pending, error, needsModel } = useDetection(text, active);
+  const hasModel = active.name === "jev" || active.ready;
 
-  // Whenever the box becomes usable (switching engines, Laya finishing loading, a Jev key accepted), put the cursor in
-  // it so the next paste needs no extra click. Deferred a tick: the tab's own mousedown focus would otherwise win.
+  const focusBox = useCallback(() => setTimeout(() => box.current?.focus({ preventScroll: true }), 0), []);
+
+  // After a tab switch, and when Laya finishes loading or a Jev key is accepted, the cursor goes back to the paste box
+  // so the next paste needs no click. Jev without a key is the exception: its key field takes focus instead.
+  // Deferred a tick: the tab's own mousedown focus would otherwise win.
   useEffect(() => {
-    if (locked) return;
-    const id = setTimeout(() => box.current?.focus({ preventScroll: true }), 0);
+    if (engine.askingKey) return;
+    const id = focusBox();
     return () => clearTimeout(id);
-  }, [locked, engine.engine]);
+  }, [engine.engine, engine.askingKey, hasModel, focusBox]);
+
+  // Esc clears from anywhere on the page (after clicking a sample, say), not only while the box has focus.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      const el = document.activeElement;
+      if (el instanceof HTMLInputElement) return; // the Jev key field
+      setText("");
+      focusBox();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [focusBox]);
 
   useEffect(() => {
     const id = setInterval(() => setPlaceholder((i) => (i + 1) % PLACEHOLDERS.length), 2500);
@@ -55,8 +79,6 @@ export function PasteWorkspace() {
     <MotionConfig reducedMotion="user">
       <div className="grid w-full max-w-2xl gap-4">
         <EngineTabs engine={engine} />
-        <div className={locked ? "relative min-h-80" : "relative"}>
-        <div inert={locked} aria-hidden={locked} className="grid gap-4">
         <div className="focus-glow overflow-hidden rounded-[28px] border bg-card">
           <Textarea
             ref={box}
@@ -64,7 +86,6 @@ export function PasteWorkspace() {
             rows={1}
             value={text}
             onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => e.key === "Escape" && setText("")}
             placeholder={`${PLACEHOLDERS[placeholder]}…`}
             aria-label="Pasted content"
             spellCheck={false}
@@ -81,56 +102,55 @@ export function PasteWorkspace() {
                     <ToolFor text={text} detection={detection} />
                   </ToolBoundary>
                 </motion.div>
-                <motion.p variants={row} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Kbd>Esc</Kbd> to clear
-                </motion.p>
+                <motion.div variants={row}>
+                  <EscHint />
+                </motion.div>
+              </div>
+            </motion.div>
+          )}
+          {needsModel && (
+            <motion.div variants={panel} initial="hidden" animate="shown">
+              <div className="grid gap-4 px-5 pt-1 pb-4">
+                <motion.div variants={row}>
+                  <NeedsModel engine={engine} model={model} />
+                </motion.div>
+                <motion.div variants={row}>
+                  <EscHint />
+                </motion.div>
               </div>
             </motion.div>
           )}
         </div>
-        {!text && (
-          <div className="grid gap-2 text-center text-sm text-muted-foreground">
-            <p>Paste anything. It becomes the tool you need.</p>
-            <div className="flex flex-wrap justify-center gap-x-3 gap-y-1">
-              <span>Try</span>
-              {SAMPLES.map(([label, sample]) => (
+        <div className="grid gap-2 text-center text-sm text-muted-foreground">
+          {!text && <p>Paste anything. It becomes the tool you need.</p>}
+          <div className="flex flex-wrap justify-center gap-x-3 gap-y-1">
+            <span>Try</span>
+            {SAMPLES.map(([label, sample]) => {
+              const marked = !hasModel && SAMPLE_NEEDS_MODEL.has(label);
+              return (
                 <button
                   key={label}
-                  onClick={() => setText(sample)}
-                  className="underline decoration-dotted underline-offset-4 transition-colors hover:text-foreground"
+                  onClick={() => {
+                    setText(sample);
+                    focusBox();
+                  }}
+                  title={marked ? "Needs a model: download Laya or add a Jev key" : undefined}
+                  className="inline-flex items-center gap-1 underline decoration-dotted underline-offset-4 transition-colors hover:text-foreground"
                 >
                   {label}
+                  {marked && <span aria-label="needs a model" className="size-1.5 rounded-full bg-amber-500" />}
                 </button>
-              ))}
-            </div>
+              );
+            })}
           </div>
-        )}
-        </div>
-        <AnimatePresence initial={false}>
-          {locked && (
-            <motion.div
-              key="locked"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2, ease: EASE_OUT }}
-              className="absolute inset-0 grid content-start justify-items-center gap-4 rounded-[28px] bg-background/70 px-4 pt-10 text-center backdrop-blur-sm"
-            >
-              {/* Anchored to the top with a fixed-height message, so switching engines doesn't shift the layer. */}
-              <div className="grid min-h-16 content-start gap-1">
-                <p className="font-medium">{engine.askingKey ? "Enter your TypeSafe key" : "Choose a model to start"}</p>
-                <p className="text-sm text-muted-foreground">
-                  {engine.askingKey
-                    ? "Jev reads your pastes in the cloud with your own key. Or switch to Laya to run on-device."
-                    : "Download Laya to run it in your browser, or use Jev with your TypeSafe key."}
-                </p>
-              </div>
-              <EnginePanel engine={engine} model={model} />
-            </motion.div>
+          {!hasModel && (
+            <p className="flex items-center justify-center gap-1.5 text-xs">
+              <span className="size-1.5 rounded-full bg-amber-500" aria-hidden />
+              Stack traces, code and prose need a model. Exact formats like JSON or JWTs work right away.
+            </p>
           )}
-        </AnimatePresence>
         </div>
-        {!locked && <EnginePanel engine={engine} model={model} />}
+        <EnginePanel engine={engine} model={model} />
         <LatencyHud detection={detection} pending={pending} error={error} />
       </div>
     </MotionConfig>

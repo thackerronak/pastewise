@@ -12,7 +12,7 @@ import { swap } from "@/lib/motion";
 const BUILD_NAMES: Record<Build, string> = { q4e8: "int4", q8e8: "int8" };
 
 /**
- * Focus an element when it appears, so the next step (typing the key, pressing Enter to download) needs no click.
+ * Focus an element when it appears, so the next step (typing the key) needs no click.
  * Deferred a tick, like the paste box: a tab switch's own mousedown focus would otherwise win.
  */
 function useFocusOnMount<T extends HTMLElement>() {
@@ -24,8 +24,37 @@ function useFocusOnMount<T extends HTMLElement>() {
   return ref;
 }
 
-function FocusedButton(props: React.ComponentProps<typeof Button>) {
-  return <Button ref={useFocusOnMount<HTMLButtonElement>()} {...props} />;
+const KEY_INPUT_ID = "jev-key";
+
+/**
+ * Shown in place of a result when fuzzy text is pasted with no model to read it: what's missing, and the one action
+ * that fixes it for the selected engine.
+ */
+export function NeedsModel({ engine, model }: Props) {
+  const size = model.builds?.find((b) => b.key === model.build)?.bytes;
+  const cached = model.cached.includes(model.build);
+  const action =
+    engine.engine === "jev" ? (
+      <Button size="sm" onClick={() => document.getElementById(KEY_INPUT_ID)?.focus()}>Enter your TypeSafe key</Button>
+    ) : model.status === "downloading" || model.status === "loading" ? (
+      <p className="text-xs">Laya is loading. This paste will be read as soon as it&apos;s ready.</p>
+    ) : (
+      <Button size="sm" onClick={laya.load}>
+        {model.status === "error" ? "Retry Laya" : cached ? "Load Laya · cached" : `Download Laya${size ? ` · ${mb(size)}` : ""}`}
+      </Button>
+    );
+  return (
+    <div role="status" className="grid justify-items-start gap-2 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
+      <p className="font-medium">Reading this needs a model</p>
+      <p className="text-muted-foreground">
+        Stack traces, code and prose are read by a model.{" "}
+        {engine.engine === "jev"
+          ? "Add your TypeSafe key to use Jev, or switch to Laya to run it in your browser."
+          : "Download Laya to run it in your browser, or switch to Jev and add your TypeSafe key."}
+      </p>
+      {action}
+    </div>
+  );
 }
 const mb = (bytes: number) => `${Math.round(bytes / 1e6)} MB`;
 
@@ -69,6 +98,7 @@ function KeyForm({ engine }: { engine: Props["engine"] }) {
     >
       <div className="flex items-center gap-2">
         <input
+          id={KEY_INPUT_ID}
           ref={input}
           type="password"
           autoComplete="off"
@@ -156,9 +186,9 @@ function LayaStatus({ model, size }: { model: LayaState; size?: number }) {
     case "idle":
       return (
         <div className="grid justify-items-center gap-1">
-          <FocusedButton size="sm" variant="outline" onClick={laya.load}>
+          <Button size="sm" variant="outline" onClick={laya.load}>
             {model.cached.includes(model.build) ? "Load model · cached" : `Download model${size ? ` · ${mb(size)}` : ""}`}
-          </FocusedButton>
+          </Button>
           <p>Downloads the model from Hugging Face (a few hundred MB, downloaded once, then cached).</p>
           <p>Runs in your browser; nothing you paste leaves the page.</p>
           {note && <p>{note}</p>}
@@ -191,7 +221,7 @@ function LayaStatus({ model, size }: { model: LayaState; size?: number }) {
       return (
         <div className="grid justify-items-center gap-1" role="alert">
           <p className="text-destructive">Couldn&apos;t load the model: {model.error}</p>
-          <FocusedButton size="sm" variant="outline" onClick={laya.load}>Retry</FocusedButton>
+          <Button size="sm" variant="outline" onClick={laya.load}>Retry</Button>
         </div>
       );
   }

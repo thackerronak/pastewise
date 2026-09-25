@@ -8,5 +8,6 @@ import { questions } from "./questions";
 export async function classify(client: TypeSafeClient, text: string, signal?: AbortSignal) {
   const res = await client.systemOne({ state: { pasted: text }, questions }, { signal });
   const { kind, language, cause } = res.answers;
-  return { kind: kind.choice, language: language.choice, cause: cause.choice, model: res.model };
+  const sure = kind.probabilities[kind.choice];
+  return { kind: kind.choice, language: language.choice, cause: cause.choice, model: res.model, sure };
 }
