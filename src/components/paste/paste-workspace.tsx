@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Kbd } from "@/components/ui/kbd";
 import { Textarea } from "@/components/ui/textarea";
 import { ToolBoundary } from "@/components/tools/tool-boundary";
@@ -10,7 +10,7 @@ import { useDetection, type Engine } from "@/hooks/use-detection";
 import { useEngine } from "@/hooks/use-engine";
 import { useLaya } from "@/lib/laya/client";
 import { EASE_OUT, panel, row } from "@/lib/motion";
-import { EngineControl } from "./engine-control";
+import { EnginePanel, EngineTabs } from "./engine-control";
 import { KindBadge } from "./kind-badge";
 import { LatencyHud } from "./latency-hud";
 import { SAMPLES } from "./samples";
@@ -20,6 +20,7 @@ const PLACEHOLDERS = ["Paste some JSON", "Paste a JWT", "Paste a cron expression
 export function PasteWorkspace() {
   const [text, setText] = useState("");
   const [placeholder, setPlaceholder] = useState(0);
+  const box = useRef<HTMLTextAreaElement>(null);
   const engine = useEngine();
   const model = useLaya();
   const { jevKey, rejectKey } = engine;
@@ -37,6 +38,14 @@ export function PasteWorkspace() {
   // paste box asks for what it needs.
   const locked = active.name === "laya" && !active.ready;
 
+  // Whenever the box becomes usable (switching engines, Laya finishing loading, a Jev key accepted), put the cursor in
+  // it so the next paste needs no extra click. Deferred a tick: the tab's own mousedown focus would otherwise win.
+  useEffect(() => {
+    if (locked) return;
+    const id = setTimeout(() => box.current?.focus({ preventScroll: true }), 0);
+    return () => clearTimeout(id);
+  }, [locked, engine.engine]);
+
   useEffect(() => {
     const id = setInterval(() => setPlaceholder((i) => (i + 1) % PLACEHOLDERS.length), 2500);
     return () => clearInterval(id);
@@ -45,10 +54,12 @@ export function PasteWorkspace() {
   return (
     <MotionConfig reducedMotion="user">
       <div className="grid w-full max-w-2xl gap-4">
+        <EngineTabs engine={engine} />
         <div className={locked ? "relative min-h-80" : "relative"}>
         <div inert={locked} aria-hidden={locked} className="grid gap-4">
         <div className="focus-glow overflow-hidden rounded-[28px] border bg-card">
           <Textarea
+            ref={box}
             autoFocus
             rows={1}
             value={text}
@@ -103,9 +114,10 @@ export function PasteWorkspace() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2, ease: EASE_OUT }}
-              className="absolute inset-0 grid place-content-center gap-4 rounded-[28px] bg-background/70 p-4 text-center backdrop-blur-sm"
+              className="absolute inset-0 grid content-start justify-items-center gap-4 rounded-[28px] bg-background/70 px-4 pt-10 text-center backdrop-blur-sm"
             >
-              <div className="grid gap-1">
+              {/* Anchored to the top with a fixed-height message, so switching engines doesn't shift the layer. */}
+              <div className="grid min-h-16 content-start gap-1">
                 <p className="font-medium">{engine.askingKey ? "Enter your TypeSafe key" : "Choose a model to start"}</p>
                 <p className="text-sm text-muted-foreground">
                   {engine.askingKey
@@ -113,12 +125,12 @@ export function PasteWorkspace() {
                     : "Download Laya to run it in your browser, or use Jev with your TypeSafe key."}
                 </p>
               </div>
-              <EngineControl engine={engine} model={model} />
+              <EnginePanel engine={engine} model={model} />
             </motion.div>
           )}
         </AnimatePresence>
         </div>
-        {!locked && <EngineControl engine={engine} model={model} />}
+        {!locked && <EnginePanel engine={engine} model={model} />}
         <LatencyHud detection={detection} pending={pending} error={error} />
       </div>
     </MotionConfig>

@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { EngineName, useEngine } from "@/hooks/use-engine";
@@ -10,19 +10,43 @@ import { GPU_BUILDS, type Build, type Device } from "@/lib/laya/protocol";
 import { swap } from "@/lib/motion";
 
 const BUILD_NAMES: Record<Build, string> = { q4e8: "int4", q8e8: "int8" };
+
+/**
+ * Focus an element when it appears, so the next step (typing the key, pressing Enter to download) needs no click.
+ * Deferred a tick, like the paste box: a tab switch's own mousedown focus would otherwise win.
+ */
+function useFocusOnMount<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  useEffect(() => {
+    const id = setTimeout(() => ref.current?.focus({ preventScroll: true }), 0);
+    return () => clearTimeout(id);
+  }, []);
+  return ref;
+}
+
+function FocusedButton(props: React.ComponentProps<typeof Button>) {
+  return <Button ref={useFocusOnMount<HTMLButtonElement>()} {...props} />;
+}
 const mb = (bytes: number) => `${Math.round(bytes / 1e6)} MB`;
 
 type Props = { engine: ReturnType<typeof useEngine>; model: LayaState };
 
-export function EngineControl({ engine, model }: Props) {
+/** The Laya / Jev switch. It sits above the paste box in every state, so it never moves when the panels change. */
+export function EngineTabs({ engine }: Pick<Props, "engine">) {
+  return (
+    <Tabs value={engine.engine} onValueChange={(v) => engine.choose(v as EngineName)} className="items-center">
+      <TabsList aria-label="Model">
+        <TabsTrigger value="laya" className="px-3 text-xs">Laya · on-device</TabsTrigger>
+        <TabsTrigger value="jev" className="px-3 text-xs">Jev · cloud</TabsTrigger>
+      </TabsList>
+    </Tabs>
+  );
+}
+
+/** What the selected engine needs or reports: Laya's build, device and download, or Jev's key. */
+export function EnginePanel({ engine, model }: Props) {
   return (
     <div className="grid justify-items-center gap-2 text-xs text-muted-foreground">
-      <Tabs value={engine.engine} onValueChange={(v) => engine.choose(v as EngineName)}>
-        <TabsList aria-label="Model">
-          <TabsTrigger value="laya" className="px-3 text-xs">Laya · on-device</TabsTrigger>
-          <TabsTrigger value="jev" className="px-3 text-xs">Jev · cloud</TabsTrigger>
-        </TabsList>
-      </Tabs>
       <AnimatePresence mode="popLayout" initial={false}>
         <motion.div key={engine.askingKey ? "key" : engine.engine} {...swap} className="grid justify-items-center gap-2">
           {engine.askingKey ? <KeyForm engine={engine} /> : engine.engine === "laya" ? <LayaPanel model={model} /> : <JevPanel engine={engine} />}
@@ -34,6 +58,7 @@ export function EngineControl({ engine, model }: Props) {
 
 function KeyForm({ engine }: { engine: Props["engine"] }) {
   const [value, setValue] = useState("");
+  const input = useFocusOnMount<HTMLInputElement>();
   return (
     <form
       className="grid justify-items-center gap-2"
@@ -44,8 +69,8 @@ function KeyForm({ engine }: { engine: Props["engine"] }) {
     >
       <div className="flex items-center gap-2">
         <input
+          ref={input}
           type="password"
-          autoFocus
           autoComplete="off"
           spellCheck={false}
           value={value}
@@ -131,9 +156,9 @@ function LayaStatus({ model, size }: { model: LayaState; size?: number }) {
     case "idle":
       return (
         <div className="grid justify-items-center gap-1">
-          <Button size="sm" variant="outline" onClick={laya.load}>
+          <FocusedButton size="sm" variant="outline" onClick={laya.load}>
             {model.cached.includes(model.build) ? "Load model · cached" : `Download model${size ? ` · ${mb(size)}` : ""}`}
-          </Button>
+          </FocusedButton>
           <p>Downloads the model from Hugging Face (a few hundred MB, downloaded once, then cached).</p>
           <p>Runs in your browser; nothing you paste leaves the page.</p>
           {note && <p>{note}</p>}
@@ -166,7 +191,7 @@ function LayaStatus({ model, size }: { model: LayaState; size?: number }) {
       return (
         <div className="grid justify-items-center gap-1" role="alert">
           <p className="text-destructive">Couldn&apos;t load the model: {model.error}</p>
-          <Button size="sm" variant="outline" onClick={laya.load}>Retry</Button>
+          <FocusedButton size="sm" variant="outline" onClick={laya.load}>Retry</FocusedButton>
         </div>
       );
   }
