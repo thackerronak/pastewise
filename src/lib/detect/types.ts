@@ -38,7 +38,7 @@ export type FuzzyDetection = {
   kind: FuzzyKind;
   language: Language;
   cause: Cause;
-  source: "jev" | "offline";
+  source: "laya" | "jev";
   model: string;
   latencyMs: number;
 };

@@ -1,20 +1,13 @@
 import "server-only";
 import { TypeSafeClient } from "@typesafe-ai/sdk";
-import { questions } from "./questions";
 
 const MODEL = process.env.JEV_MODEL || "jev-latest";
 
-let client: TypeSafeClient | null = null;
+export const KEY_HEADER = "x-typesafe-key";
 
-export const hasJevKey = () => (process.env.TYPESAFE_API_KEY?.trim().length ?? 0) >= 12;
+export const isJevKey = (key: string | null): key is string => (key?.trim().length ?? 0) >= 12;
 
-function getClient() {
-  client ??= new TypeSafeClient({ defaultModel: MODEL, retry: { maxRetries: 0 }, timeout: 3000 });
-  return client;
-}
-
-export async function classifyWithJev(text: string, signal?: AbortSignal) {
-  const res = await getClient().systemOne({ state: { pasted: text }, questions }, { signal });
-  const { kind, language, cause } = res.answers;
-  return { kind: kind.choice, language: language.choice, cause: cause.choice, model: res.model };
-}
+// Jev is called from the server only because api.typesafe.ai doesn't allow browser (CORS) requests. The key is the
+// visitor's own, sent with each request and never stored, so each request gets its own client.
+export const jevClient = (apiKey: string) =>
+  new TypeSafeClient({ apiKey, defaultModel: MODEL, retry: { maxRetries: 0 }, timeout: 3000 });

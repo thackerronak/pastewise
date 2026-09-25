@@ -7,7 +7,7 @@ const mono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "pastewise: paste anything, get the right tool",
-  description: "Paste JSON, JWTs, cron, stack traces, colors and more. The box becomes the tool you need. Powered by Jev.",
+  description: "Paste JSON, JWTs, cron, stack traces, colors and more. The box becomes the tool you need. Runs Laya in your browser, or Jev with your own key.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

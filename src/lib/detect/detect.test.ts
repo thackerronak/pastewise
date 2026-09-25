@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test";
-import { classifyOffline } from "./offline";
 import { detectByRules } from "./rules";
 
 const JWT =
@@ -23,12 +22,4 @@ test("rules leave fuzzy text alone", () => {
   expect(detectByRules("select a movie for tonight")).toBeNull();
   expect(detectByRules("hello there, how are you doing today")).toBeNull();
   expect(detectByRules("one two three four five")).toBeNull();
-});
-
-test("offline classifier separates stack traces, code and prose", () => {
-  const node = "TypeError: Cannot read properties of undefined (reading 'map')\n    at List (/app/src/List.tsx:12:5)";
-  expect(classifyOffline(node)).toEqual({ kind: "stacktrace", language: "typescript", cause: "null_reference" });
-  expect(classifyOffline("def add(a, b):\n    return a + b").kind).toBe("code");
-  expect(classifyOffline("def add(a, b):\n    return a + b").language).toBe("python");
-  expect(classifyOffline("Meeting notes from Tuesday").kind).toBe("text");
 });

@@ -18,9 +18,12 @@ aGVsbG8gd29ybGQ=                      →  decoded base64
 
 Exact formats (JSON, JWT, URL, timestamp, color, cron, base64, SQL) are detected in the browser with plain rules: instant, no network.
 
-Anything the rules can't pin down goes to [TypeSafe AI](https://typesafe.ai)'s **Jev** model, which answers three typed questions in one call: is this a stack trace, code or prose; which language; and, for errors, the most likely root cause. The tool itself is always deterministic code.
+Anything the rules can't pin down goes to a decision model, which answers three typed questions in one pass: is this a stack trace, code or prose; which language; and, for errors, the most likely root cause. The tool itself is always deterministic code. You pick the model under the paste box:
 
-Without an API key it falls back to a built-in heuristic classifier, so it runs out of the box.
+- **Laya · on-device** (default). [Laya](https://github.com/NandhaKishorM/laya)'s typed-decisions checkpoint runs in your browser through ONNX Runtime Web, using the [layaForWeb](https://github.com/vishalmysore/layaForWeb) build hosted on Hugging Face. Nothing you paste leaves the page. Choose the int4 build (291 MB, GPU or CPU) or the int8 build (442 MB, CPU only), and run it on the GPU (WebGPU) or the CPU (WASM). It downloads once when you ask, then loads from the browser cache.
+- **Jev · cloud**. [TypeSafe AI](https://typesafe.ai)'s Jev model, with your own API key. The key is kept only in the open tab and sent with each request; it is never stored, so a refresh asks for it again.
+
+Both go through the same TypeSafe SDK and the same questions, in one shared `classify` call: for Laya, the SDK's `fetch` is answered by the model in a Web Worker instead of the network. Until you download Laya or enter a Jev key, the paste box is covered by a layer that asks you to pick one. Jev requests go through `/api/classify` because TypeSafe's API doesn't accept calls straight from the browser.
 
 ## Run it
 
@@ -31,28 +34,23 @@ bun install
 bun dev
 ```
 
-To use the online model:
-
-```bash
-cp .env.example .env.local   # then set TYPESAFE_API_KEY
-```
-
-The key is read only on the server, in `/api/classify`.
+No keys or env vars are needed. `.env.example` lists the optional ones (another Laya model host, a pinned Jev version).
 
 ## Layout
 
 ```
 src/
-  lib/detect/             rules for exact formats, offline fallback classifier
-  lib/jev/                Jev questions and server client
+  lib/detect/             rules for exact formats
+  lib/jev/                the typed questions, the shared classify call, and the Jev server client
+  lib/laya/               Laya in the browser: model worker, SDK bridge, TypeScript port of layaForWeb's core
   lib/tools/              pure helpers: JSON → TS, JWT, cron, color, stack parsing…
-  app/api/classify/       POST { text } → kind, language, cause
-  hooks/use-detection.ts  rules first, Jev for the rest
+  app/api/classify/       POST { text } + the visitor's key → Jev's kind, language, cause
+  hooks/use-detection.ts  rules first, then Laya or Jev
   components/tools/       one component per kind, plus the registry
   components/paste/       the workspace, kind badge, samples
 ```
 
-Adding a tool: add the kind to `lib/detect/types.ts`, a rule or Jev option for it, a component in `components/tools/`, and a case in `registry.tsx`.
+Adding a tool: add the kind to `lib/detect/types.ts`, a rule or question option for it, a component in `components/tools/`, and a case in `registry.tsx`.
 
 ## Scripts
 
@@ -61,3 +59,7 @@ Adding a tool: add the kind to `lib/detect/types.ts`, a rule or Jev option for i
 | `bun dev` | Start the dev server |
 | `bun run check` | Typecheck, lint and test |
 | `bun run build` | Production build |
+
+## Credits
+
+Laya by ConvAI Innovations and layaForWeb by Vishal Mysore, both Apache-2.0. See [NOTICE.md](NOTICE.md).

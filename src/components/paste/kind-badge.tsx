@@ -3,6 +3,12 @@ import { swap } from "@/lib/motion";
 import type { Detection } from "@/lib/detect/types";
 import { KIND_META } from "@/components/tools/registry";
 
+const SOURCE_LABEL: Record<Detection["source"], string> = {
+  rules: "exact match",
+  laya: "read by Laya",
+  jev: "read by Jev",
+};
+
 export function KindBadge({ detection }: { detection: Detection }) {
   const meta = KIND_META[detection.kind];
   return (
@@ -17,7 +23,7 @@ export function KindBadge({ detection }: { detection: Detection }) {
         </div>
         <span className="font-medium">{meta.label}</span>
         <span className="text-sm text-muted-foreground">
-          {detection.source === "rules" ? "exact match" : "read by Jev"}
+          {SOURCE_LABEL[detection.source]}
         </span>
       </motion.div>
     </AnimatePresence>
