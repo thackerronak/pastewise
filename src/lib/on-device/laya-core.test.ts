@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { Tokenizer } from "@huggingface/tokenizers";
-import { buildSequence, specialIds, toInternal, type Question } from "./core";
+import { buildSequence, specialIds, toInternal, type Question } from "./laya-core";
 // Token sequences produced by Laya's Python reference, from layaForWeb's tests/seq_tests.json (Apache-2.0).
 import cases from "./fixtures/seq_tests.json";
 

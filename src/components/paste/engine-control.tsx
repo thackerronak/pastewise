@@ -5,11 +5,15 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { EngineName, useEngine } from "@/hooks/use-engine";
-import { laya, type LayaState } from "@/lib/laya/client";
-import { GPU_BUILDS, type Build, type Device } from "@/lib/laya/protocol";
+import { cacheKey, MODEL_NAMES, onDevice, type OnDeviceState } from "@/lib/on-device/client";
+import { GPU_BUILDS, type Build, type Device, type ModelId } from "@/lib/on-device/protocol";
 import { swap } from "@/lib/motion";
 
-const BUILD_NAMES: Record<Build, string> = { q4e8: "int4", q8e8: "int8" };
+const BUILD_NAMES: Record<Build, string> = { q4e8: "int4", q8e8: "int8", int4: "int4" };
+const MODELS: readonly ModelId[] = ["tev1", "laya"];
+
+const buildsOf = (model: OnDeviceState) => model.catalogs[model.model]?.builds ?? null;
+const sizeOf = (model: OnDeviceState, build: Build) => buildsOf(model)?.find((b) => b.key === build)?.bytes;
 
 /**
  * Focus an element when it appears, so the next step (typing the key) needs no click.
@@ -31,16 +35,17 @@ const KEY_INPUT_ID = "jev-key";
  * that fixes it for the selected engine.
  */
 export function NeedsModel({ engine, model }: Props) {
-  const size = model.builds?.find((b) => b.key === model.build)?.bytes;
-  const cached = model.cached.includes(model.build);
+  const size = sizeOf(model, model.build);
+  const cached = model.cached.includes(cacheKey(model.model, model.build));
+  const name = MODEL_NAMES[model.model];
   const action =
     engine.engine === "jev" ? (
       <Button size="sm" onClick={() => document.getElementById(KEY_INPUT_ID)?.focus()}>Enter your TypeSafe key</Button>
     ) : model.status === "downloading" || model.status === "loading" ? (
-      <p className="text-xs">Laya is loading. This paste will be read as soon as it&apos;s ready.</p>
+      <p className="text-xs">{name} is loading. This paste will be read as soon as it&apos;s ready.</p>
     ) : (
-      <Button size="sm" onClick={laya.load}>
-        {model.status === "error" ? "Retry Laya" : cached ? "Load Laya · cached" : `Download Laya${size ? ` · ${mb(size)}` : ""}`}
+      <Button size="sm" onClick={onDevice.load}>
+        {model.status === "error" ? `Retry ${name}` : cached ? `Load ${name} · cached` : `Download ${name}${size ? ` · ${mb(size)}` : ""}`}
       </Button>
     );
   return (
@@ -49,8 +54,8 @@ export function NeedsModel({ engine, model }: Props) {
       <p className="text-muted-foreground">
         Stack traces, code and prose are read by a model.{" "}
         {engine.engine === "jev"
-          ? "Add your TypeSafe key to use Jev, or switch to Laya to run it in your browser."
-          : "Download Laya to run it in your browser, or switch to Jev and add your TypeSafe key."}
+          ? "Add your TypeSafe key to use Jev, or switch to On-device to run a model in your browser."
+          : `Download ${name} to run it in your browser, or switch to Jev and add your TypeSafe key.`}
       </p>
       {action}
     </div>
@@ -58,27 +63,27 @@ export function NeedsModel({ engine, model }: Props) {
 }
 const mb = (bytes: number) => `${Math.round(bytes / 1e6)} MB`;
 
-type Props = { engine: ReturnType<typeof useEngine>; model: LayaState };
+type Props = { engine: ReturnType<typeof useEngine>; model: OnDeviceState };
 
-/** The Laya / Jev switch. It sits above the paste box in every state, so it never moves when the panels change. */
+/** The on-device / Jev switch. It sits above the paste box in every state, so it never moves when the panels change. */
 export function EngineTabs({ engine }: Pick<Props, "engine">) {
   return (
     <Tabs value={engine.engine} onValueChange={(v) => engine.choose(v as EngineName)} className="items-center">
       <TabsList aria-label="Model">
-        <TabsTrigger value="laya" className="px-3 text-xs">Laya · on-device</TabsTrigger>
+        <TabsTrigger value="device" className="px-3 text-xs">On-device</TabsTrigger>
         <TabsTrigger value="jev" className="px-3 text-xs">Jev · cloud</TabsTrigger>
       </TabsList>
     </Tabs>
   );
 }
 
-/** What the selected engine needs or reports: Laya's build, device and download, or Jev's key. */
+/** What the selected engine needs or reports: the on-device model, build, device and download, or Jev's key. */
 export function EnginePanel({ engine, model }: Props) {
   return (
     <div className="grid justify-items-center gap-2 text-xs text-muted-foreground">
       <AnimatePresence mode="popLayout" initial={false}>
         <motion.div key={engine.askingKey ? "key" : engine.engine} {...swap} className="grid justify-items-center gap-2">
-          {engine.askingKey ? <KeyForm engine={engine} /> : engine.engine === "laya" ? <LayaPanel model={model} /> : <JevPanel engine={engine} />}
+          {engine.askingKey ? <KeyForm engine={engine} /> : engine.engine === "device" ? <OnDevicePanel model={model} /> : <JevPanel engine={engine} />}
         </motion.div>
       </AnimatePresence>
     </div>
@@ -111,7 +116,7 @@ function KeyForm({ engine }: { engine: Props["engine"] }) {
           className="h-7 w-56 rounded-md border bg-background px-2 font-mono text-xs text-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive"
         />
         <Button type="submit" size="sm">Use Jev</Button>
-        <Button type="button" size="sm" variant="ghost" onClick={() => engine.choose("laya")}>Cancel</Button>
+        <Button type="button" size="sm" variant="ghost" onClick={() => engine.choose("device")}>Cancel</Button>
       </div>
       <p className={engine.keyError ? "text-destructive" : undefined} aria-live="polite">
         {engine.keyError ?? "Kept only for this tab. You'll be asked again after a refresh."}
@@ -134,60 +139,87 @@ function JevPanel({ engine }: { engine: Props["engine"] }) {
   );
 }
 
-function LayaPanel({ model }: { model: LayaState }) {
-  const size = (build: Build) => model.builds?.find((b) => b.key === build)?.bytes;
+const LICENSE_NOTE: Partial<Record<ModelId, string>> = {
+  tev1: "Experimental; the license for these weights is still being finalized.",
+};
+
+function OnDevicePanel({ model }: { model: OnDeviceState }) {
+  const builds = buildsOf(model);
+  const checkpoint = model.catalogs[model.model]?.checkpoint;
   const gpuAllowed = GPU_BUILDS.includes(model.build) && model.gpuAvailable !== false;
   const busy = model.status === "downloading" || model.status === "loading";
+  const buildLabel = (b: Build) => {
+    const size = sizeOf(model, b);
+    return `${BUILD_NAMES[b]}${size ? ` · ${mb(size)}` : ""}${GPU_BUILDS.includes(b) ? "" : " · CPU only"}`;
+  };
 
   return (
     <>
-      {model.source && (
-        <p>
-          Model{" "}
-          <a
-            href={`https://huggingface.co/${model.source}`}
-            target="_blank"
-            rel="noreferrer"
-            className="font-mono text-foreground underline decoration-dotted underline-offset-4"
-          >
-            {model.source}
-          </a>
-        </p>
-      )}
       <div className="flex flex-wrap items-center justify-center gap-2">
-        <Tabs value={model.build} onValueChange={(v) => laya.setBuild(v as Build)}>
-          <TabsList aria-label="Model build" className="h-7!">
-            {(["q4e8", "q8e8"] as const).map((b) => (
-              <TabsTrigger key={b} value={b} disabled={busy || (model.builds !== null && !size(b))} className="px-2 text-xs">
-                {BUILD_NAMES[b]}
-                {size(b) ? ` · ${mb(size(b)!)}` : ""}
-                {b === "q8e8" ? " · CPU only" : ""}
+        <span>Model</span>
+        <Tabs value={model.model} onValueChange={(v) => onDevice.setModel(v as ModelId)}>
+          <TabsList aria-label="On-device model" className="h-7!">
+            {MODELS.map((m) => (
+              <TabsTrigger key={m} value={m} disabled={busy} className="px-2 text-xs">
+                {MODEL_NAMES[m]}
               </TabsTrigger>
             ))}
           </TabsList>
         </Tabs>
-        <Tabs value={gpuAllowed ? model.device : "cpu"} onValueChange={(v) => laya.setDevice(v as Device)}>
+        {checkpoint && (
+          <a
+            href={`https://huggingface.co/${checkpoint}`}
+            target="_blank"
+            rel="noreferrer"
+            className="font-mono text-foreground underline decoration-dotted underline-offset-4"
+          >
+            {checkpoint}
+          </a>
+        )}
+      </div>
+      {LICENSE_NOTE[model.model] && <p>{LICENSE_NOTE[model.model]}</p>}
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        {builds && builds.length > 1 ? (
+          <Tabs value={model.build} onValueChange={(v) => onDevice.setBuild(v as Build)}>
+            <TabsList aria-label="Model build" className="h-7!">
+              {builds.map(({ key }) => (
+                <TabsTrigger key={key} value={key} disabled={busy} className="px-2 text-xs">
+                  {buildLabel(key)}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        ) : (
+          builds && <span className="rounded-md bg-muted px-2 py-1">{buildLabel(model.build)}</span>
+        )}
+        <Tabs value={gpuAllowed ? model.device : "cpu"} onValueChange={(v) => onDevice.setDevice(v as Device)}>
           <TabsList aria-label="Run on" className="h-7!">
             <TabsTrigger value="gpu" disabled={busy || !gpuAllowed} className="px-2 text-xs">GPU</TabsTrigger>
             <TabsTrigger value="cpu" disabled={busy} className="px-2 text-xs">CPU</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
-      <LayaStatus model={model} size={size(model.build)} />
+      <OnDeviceStatus model={model} size={sizeOf(model, model.build)} />
     </>
   );
 }
 
-function LayaStatus({ model, size }: { model: LayaState; size?: number }) {
-  const note =
-    model.build === "q8e8" ? "int8 runs on CPU only." : model.gpuAvailable === false ? "GPU not available, using CPU." : null;
+function OnDeviceStatus({ model, size }: { model: OnDeviceState; size?: number }) {
+  const name = MODEL_NAMES[model.model];
+  const note = !GPU_BUILDS.includes(model.build)
+    ? `${BUILD_NAMES[model.build]} runs on CPU only.`
+    : model.gpuAvailable === false
+      ? "GPU not available, using CPU."
+      : model.model === "tev1" && model.device === "cpu"
+        ? "Tev1 on CPU takes several seconds per paste; GPU is much faster."
+        : null;
 
   switch (model.status) {
     case "idle":
       return (
         <div className="grid justify-items-center gap-1">
-          <Button size="sm" variant="outline" onClick={laya.load}>
-            {model.cached.includes(model.build) ? "Load model · cached" : `Download model${size ? ` · ${mb(size)}` : ""}`}
+          <Button size="sm" variant="outline" onClick={onDevice.load}>
+            {model.cached.includes(cacheKey(model.model, model.build)) ? `Load ${name} · cached` : `Download ${name}${size ? ` · ${mb(size)}` : ""}`}
           </Button>
           <p>Downloads the model from Hugging Face (a few hundred MB, downloaded once, then cached).</p>
           <p>Runs in your browser; nothing you paste leaves the page.</p>
@@ -207,12 +239,12 @@ function LayaStatus({ model, size }: { model: LayaState; size?: number }) {
       );
     }
     case "loading":
-      return <p role="status">Starting the model…</p>;
+      return <p role="status">Starting {name}…</p>;
     case "ready": {
       const a = model.active!;
       return (
         <p role="status">
-          Ready · {BUILD_NAMES[a.build]} · {a.device === "gpu" ? "GPU" : "CPU"}
+          Ready · {MODEL_NAMES[a.model]} · {BUILD_NAMES[a.build]} · {a.device === "gpu" ? "GPU" : "CPU"}
           {a.note ? ` · ${a.note}` : ""}
         </p>
       );
@@ -220,8 +252,8 @@ function LayaStatus({ model, size }: { model: LayaState; size?: number }) {
     case "error":
       return (
         <div className="grid justify-items-center gap-1" role="alert">
-          <p className="text-destructive">Couldn&apos;t load the model: {model.error}</p>
-          <Button size="sm" variant="outline" onClick={laya.load}>Retry</Button>
+          <p className="text-destructive">Couldn&apos;t load {name}: {model.error}</p>
+          <Button size="sm" variant="outline" onClick={onDevice.load}>Retry</Button>
         </div>
       );
   }

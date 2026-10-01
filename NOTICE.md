@@ -10,8 +10,8 @@ license text is in [`licenses/APACHE-2.0.txt`](licenses/APACHE-2.0.txt).
 
 Used here:
 
-- `src/lib/laya/core.ts` is a TypeScript port of layaForWeb's `web/laya-core.js`.
-- `src/lib/laya/fixtures/seq_tests.json` is copied unchanged from layaForWeb's `tests/seq_tests.json`.
+- `src/lib/on-device/laya-core.ts` is a TypeScript port of layaForWeb's `web/laya-core.js`.
+- `src/lib/on-device/fixtures/seq_tests.json` is copied unchanged from layaForWeb's `tests/seq_tests.json`.
 
 **Changes made in pastewise** (Apache-2.0 section 4b): `laya-core.js` was ported to TypeScript, and the model name it
 reports is passed in by the caller instead of being fixed.
@@ -40,6 +40,15 @@ hosted at https://huggingface.co/VishalMysore/layaForWebTrained. The visitor's b
 not part of this repository.
 
 pastewise is not affiliated with or endorsed by ConvAI Innovations, Answer.AI, LightOn or the author of layaForWeb.
+
+## Tev1 model files
+
+The Tev1 model is loaded at runtime from [goldenfox/tev1-0.8b-decision-onnx](https://huggingface.co/goldenfox/tev1-0.8b-decision-onnx),
+an ONNX conversion of [togethercomputer/Tev1-0.8B-experimental](https://huggingface.co/togethercomputer/Tev1-0.8B-experimental)
+by Together AI, a fine-tune of Qwen3.5-0.8B (Apache-2.0). The visitor's browser downloads it from there; it is not part
+of this repository. Together AI's model card says the license for these fine-tuned weights is still being finalized;
+check the source repository for the current terms. `src/lib/on-device/tev1-core.ts` builds Tev1's documented prompt
+format (system instruction plus a JSON decision) and is original to pastewise.
 
 ## npm dependencies
 

@@ -9,7 +9,7 @@ import { ToolFor } from "@/components/tools/registry";
 import { useDetection, type Engine } from "@/hooks/use-detection";
 import { useEngine } from "@/hooks/use-engine";
 import { detectByRules } from "@/lib/detect/rules";
-import { useLaya } from "@/lib/laya/client";
+import { useOnDevice } from "@/lib/on-device/client";
 import { panel, row } from "@/lib/motion";
 import { EnginePanel, EngineTabs, NeedsModel } from "./engine-control";
 import { KindBadge } from "./kind-badge";
@@ -32,16 +32,16 @@ export function PasteWorkspace() {
   const [placeholder, setPlaceholder] = useState(0);
   const box = useRef<HTMLTextAreaElement>(null);
   const engine = useEngine();
-  const model = useLaya();
+  const model = useOnDevice();
   const { jevKey, rejectKey } = engine;
   const setup = model.active ? `${model.active.build === "q8e8" ? "int8" : "int4"} · ${model.active.device}` : "";
-  // Jev without a key reads nothing, the same as Laya before its model is loaded.
+  // Jev without a key reads nothing, the same as the on-device model before it's loaded.
   const active = useMemo<Engine>(
     () =>
       engine.engine === "jev" && jevKey
         ? { name: "jev", key: jevKey, onInvalidKey: rejectKey }
-        : { name: "laya", ready: engine.engine === "laya" && model.status === "ready", setup },
-    [engine.engine, jevKey, rejectKey, model.status, setup],
+        : { name: "device", ready: engine.engine === "device" && model.status === "ready", model: model.active?.model ?? model.model, setup },
+    [engine.engine, jevKey, rejectKey, model.status, model.active?.model, model.model, setup],
   );
   const { detection, pending, error, needsModel } = useDetection(text, active);
   const hasModel = active.name === "jev" || active.ready;

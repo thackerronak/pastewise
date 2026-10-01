@@ -2,17 +2,17 @@
 
 import { useCallback, useState } from "react";
 
-export type EngineName = "laya" | "jev";
+export type EngineName = "device" | "jev";
 
 const MIN_KEY_LENGTH = 12;
 
 /**
- * Which model reads fuzzy pastes. Laya (on-device) is selected on every page load. Jev needs the visitor's own
+ * Which model reads fuzzy pastes. The on-device model (Laya or Tev1) is selected on every page load. Jev needs the visitor's own
  * TypeSafe key, which lives only in this component's state: it is never written to storage, so a refresh asks again.
  * Selecting Jev without a key asks for one; until it's entered, nothing reads pastes.
  */
 export function useEngine() {
-  const [engine, setEngine] = useState<EngineName>("laya");
+  const [engine, setEngine] = useState<EngineName>("device");
   const [jevKey, setJevKey] = useState<string | null>(null);
   const [keyError, setKeyError] = useState<string | null>(null);
 

@@ -8,7 +8,7 @@
 
 import type * as Ort from "onnxruntime-web";
 
-type Json = string | number | boolean | null | Json[] | { [k: string]: Json };
+export type Json = string | number | boolean | null | Json[] | { [k: string]: Json };
 
 export type Question =
   | { type: "choice"; instructions: Json; criteria: Record<string, Json> | string[] }

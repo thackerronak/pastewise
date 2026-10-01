@@ -6,6 +6,7 @@ import { KIND_META } from "@/components/tools/registry";
 const SOURCE_LABEL: Record<Detection["source"], string> = {
   rules: "exact match",
   laya: "read by Laya",
+  tev1: "read by Tev1",
   jev: "read by Jev",
 };
 

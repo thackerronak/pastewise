@@ -38,7 +38,7 @@ export type FuzzyDetection = {
   kind: FuzzyKind;
   language: Language;
   cause: Cause;
-  source: "laya" | "jev";
+  source: "laya" | "tev1" | "jev";
   model: string;
   latencyMs: number;
   /** The model's probability for the kind it picked, 0 to 1. Rules are exact, so only model answers carry one. */
